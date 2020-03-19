@@ -1,3 +1,9 @@
+pub struct Tree {}
+
+impl Tree {
+
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
