@@ -1,32 +1,48 @@
 use std::fmt;
 use crate::iterator;
+use std::rc::Rc;
+use std::collections::HashMap;
 
 pub struct Node<T> {
     /// Children of the node.
     children: Vec<Node<T>>,
 
     /// Object to be filled with syntax/format information.
-    obj: Option<T>,
+    obj: Option<Rc<T>>,
 
     /// Text the node (when a leaf) is holding.
     text: Option<String>,
 }
 
+struct AffectedNode {
+    /// Affected node index.
+    node_index: usize,
+
+    /// Start of the range.
+    start: usize,
+
+    /// End of the range.
+    end: usize,
+
+    /// Whether the affected node is completely enlosed by the range.
+    completely_enclosed: bool,
+}
+
 impl<T> Node<T> {
     /// Create new leaf node.
-    pub fn new_leaf(text: String) -> Node<T> {
+    pub fn new_leaf(text: String, obj: Option<Rc<T>>) -> Node<T> {
         Node {
             children: Vec::new(),
-            obj: None,
+            obj,
             text: Some(text),
         }
     }
 
     /// Create new node.
-    pub fn new(obj: T) -> Node<T> {
+    pub fn new() -> Node<T> {
         Node {
             children: Vec::new(),
-            obj: Some(obj),
+            obj: None,
             text: None,
         }
     }
@@ -68,7 +84,7 @@ impl<T> Node<T> {
     }
 
     /// Get the object the node is holding.
-    pub fn obj(&self) -> Option<&T> {
+    pub fn obj(&self) -> Option<&Rc<T>> {
         assert!(!self.is_leaf());
 
         self.obj.as_ref()
@@ -76,58 +92,152 @@ impl<T> Node<T> {
 
     /// Set syntax/format info for the passed range.
     /// The range is the passed start index (inclusive) to the passed end index (exclusive).
-    pub fn set(&mut self, start_idx: usize, end_idx: usize, obj: T) {
+    /// Returns a list of nodes to replace the current one in case that is needed (optional).
+    pub fn set(&mut self, start_idx: usize, end_idx: usize, obj: Rc<T>) -> Option<Vec<Node<T>>> {
         assert!(start_idx < end_idx);
 
         if self.is_leaf() {
-            self.set_leaf(start_idx, end_idx, obj);
-        } else {}
+            self.set_on_leaf(start_idx, end_idx, obj)
+        } else {
+            self.set_on_node(start_idx, end_idx, obj);
+            None
+        }
+    }
+
+    /// Set for a node with children.
+    fn set_on_node(&mut self, mut start_idx: usize, end_idx: usize, obj: Rc<T>) {
+        // Find out which child-node(s) is/are affected
+        let mut offset = 0;
+        let mut affected_children = Vec::new();
+        for i in 0..self.children.len() {
+            let child = &self.children[i];
+
+            let length = child.length();
+
+            if start_idx >= offset && start_idx <= offset + length {
+                let end = if end_idx <= offset + length { end_idx - offset } else { length };
+
+                let completely_enclosed = start_idx == offset && end == length;
+                affected_children.push(AffectedNode {
+                    node_index: i,
+                    start: start_idx - offset,
+                    end,
+                    completely_enclosed,
+                });
+
+                if end_idx <= offset + length {
+                    break;
+                }
+
+                start_idx = offset + length;
+            }
+
+            offset += length;
+        }
+
+        // Collect all completely enclosed child nodes.
+        let mut replace_later = HashMap::new();
+        let completely_enclosed: Vec<&AffectedNode> = affected_children.iter().filter(|a| a.completely_enclosed).collect();
+        if completely_enclosed.len() >= 2 {
+            // Build new parent node for these nodes
+            let mut parent = Node::new();
+            parent.obj = Some(Rc::clone(&obj));
+
+            // Remove all completely enclosed children from old parent and assign to the new one
+            let mut removed_count = 0;
+            for a in &completely_enclosed {
+                parent.add_child(self.children.remove(a.node_index - removed_count));
+                removed_count += 1;
+            }
+
+            // Insert new parent as child of the old parent
+            self.children.insert(completely_enclosed.first().as_ref().unwrap().node_index, parent);
+
+            // Reduce to the rest of the affected children, which have not been handled yet.
+            affected_children = affected_children.into_iter().filter(|a| !a.completely_enclosed).collect();
+        }
+
+        // Set the object to the affected children.
+        for i in 0..affected_children.len() {
+            let affected = &affected_children[i];
+
+            let child = &mut self.children[affected.node_index];
+            if let Some(replace_with) = child.set(affected.start, affected.end, Rc::clone(&obj)) {
+                replace_later.insert(i, replace_with); // Replace the child node with the passed nodes later.
+            }
+        }
+
+        // Replace the child nodes which need to
+        for (idx, replace_with) in replace_later {
+            self.children.remove(idx);
+
+            let mut i = 0;
+            for node in replace_with {
+                self.children.insert(idx + i, node);
+                i += 1;
+            }
+        }
     }
 
     /// Set for a leaf node.
-    fn set_leaf(&mut self, start_idx: usize, end_idx: usize, obj: T) {
+    /// Returns a list of nodes to replace this leaf in the parent children list when
+    /// there is something to replace.
+    fn set_on_leaf(&mut self, start_idx: usize, end_idx: usize, obj: Rc<T>) -> Option<Vec<Node<T>>> {
         let text = self.text.take().unwrap();
         let length = text.len();
+        let has_obj = self.obj.is_some();
 
         assert!(start_idx <= length);
         assert!(end_idx <= length);
 
         if start_idx == 0 && end_idx == length {
-            // Affects exactly this one leaf -> Turn into a node
+            // Affects exactly this one leaf node
             self.obj = Some(obj);
-            self.add_child(Node::new_leaf(text));
+
+            if has_obj {
+                self.add_child(Node::new_leaf(text, None));
+            } else {
+                self.text = Some(text);
+            }
+            None
         } else if start_idx == 0 {
-            // Turn into node with two children
-            let left_str = String::from(&text[0..end_idx]);
-            let right_str = String::from(&text[end_idx..length]);
+            // Split this leaf in two leafs
+            let left_node = Node::new_leaf(String::from(&text[0..end_idx]), Some(obj));
+            let right_node = Node::new_leaf(String::from(&text[end_idx..length]), None);
 
-            let mut obj_node = Node::new(obj);
-            obj_node.add_child(Node::new_leaf(left_str));
-
-            self.add_child(obj_node);
-            self.add_child(Node::new_leaf(right_str));
+            if has_obj {
+                self.add_child(left_node);
+                self.add_child(right_node);
+                None
+            } else {
+                Some(vec!(left_node, right_node))
+            }
         } else if end_idx == length {
-            // Turn into node with two children
-            let left_str = String::from(&text[0..start_idx]);
-            let right_str = String::from(&text[start_idx..length]);
+            // Split this leaf in two leafs
+            let left_node = Node::new_leaf(String::from(&text[0..start_idx]), None);
+            let right_node = Node::new_leaf(String::from(&text[start_idx..length]), Some(obj));
 
-            let mut obj_node = Node::new(obj);
-            obj_node.add_child(Node::new_leaf(right_str));
-
-            self.add_child(Node::new_leaf(left_str));
-            self.add_child(obj_node);
+            if has_obj {
+                self.add_child(left_node);
+                self.add_child(right_node);
+                None
+            } else {
+                Some(vec!(left_node, right_node))
+            }
         } else {
-            // Turn into node with three children
-            let left_str = String::from(&text[0..start_idx]);
-            let middle_str = String::from(&text[start_idx..end_idx]);
-            let right_str = String::from(&text[end_idx..length]);
+            // Turn this leaf in three leafs
+            let left_node = Node::new_leaf(String::from(&text[0..start_idx]), None);
+            let middle_node = Node::new_leaf(String::from(&text[start_idx..end_idx]), Some(obj));
+            let right_node = Node::new_leaf(String::from(&text[end_idx..length]), None);
 
-            let mut obj_node = Node::new(obj);
-            obj_node.add_child(Node::new_leaf(middle_str));
-
-            self.add_child(Node::new_leaf(left_str));
-            self.add_child(obj_node);
-            self.add_child(Node::new_leaf(right_str));
+            if has_obj {
+                self.add_child(left_node);
+                self.add_child(middle_node);
+                self.add_child(right_node);
+                None
+            } else {
+                Some(vec!(left_node, middle_node, right_node))
+            }
         }
     }
 
@@ -146,7 +256,7 @@ impl<T> Node<T> {
             for child in &mut self.children {
                 let length = child.length();
 
-                if idx < offset + length {
+                if idx <= offset + length {
                     child.insert(idx - offset, ch);
                     break;
                 }
@@ -161,7 +271,7 @@ impl<T> Node<T> {
         if self.is_leaf() {
             let length = self.length();
 
-            if idx >= length {
+            if idx > length {
                 panic!("Cannot insert at position {} when underlying text has length {}", idx, length);
             }
 
@@ -171,7 +281,7 @@ impl<T> Node<T> {
             for child in &mut self.children {
                 let length = child.length();
 
-                if idx < offset + length {
+                if idx <= offset + length {
                     child.insert_str(idx - offset, string);
                     break;
                 }
@@ -224,9 +334,9 @@ impl<T> fmt::Debug for Node<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for iterator::Item { node, level } in self.pre_order_iter() {
             if node.is_leaf() {
-                writeln!(f, "{spacing}|-- '{text}'", spacing = " ".repeat(level * 4), text = node.text())?;
+                writeln!(f, "{spacing}|-- '{text}'{format}", spacing = " ".repeat(level * 4), text = node.text(), format = if node.obj.is_some() { " #" } else { "" })?;
             } else {
-                writeln!(f, "{spacing}|---o ('{text}')", spacing = " ".repeat(level * 4), text = node.text())?;
+                writeln!(f, "{spacing}|---o ('{text}'){format}", spacing = " ".repeat(level * 4), text = node.text(), format = if node.obj.is_some() { " #" } else { "" })?;
             }
         }
 
@@ -240,7 +350,7 @@ mod tests {
 
     #[test]
     fn insert_char_one_level() {
-        let mut node: Node<()> = Node::new_leaf(String::from("Hello"));
+        let mut node: Node<()> = Node::new_leaf(String::from("Hello"), None);
         node.insert(2, 'b');
 
         assert_eq!(node.text(), "Hebllo");
@@ -249,15 +359,15 @@ mod tests {
     #[test]
     #[should_panic]
     fn insert_char_panic() {
-        let mut node: Node<()> = Node::new_leaf(String::from("Hello"));
-        node.insert(233, 's');
+        let mut node: Node<()> = Node::new_leaf(String::from("Hello"), None);
+        node.insert(6, 's');
     }
 
     #[test]
     fn insert_char_multiple_levels() {
-        let mut root: Node<()> = Node::new(());
-        root.add_child(Node::new_leaf(String::from("Hello ")));
-        root.add_child(Node::new_leaf(String::from("World")));
+        let mut root: Node<()> = Node::new();
+        root.add_child(Node::new_leaf(String::from("Hello "), None));
+        root.add_child(Node::new_leaf(String::from("World"), None));
 
         root.insert(3, 'X');
         root.insert(9, 'Z');
@@ -267,7 +377,7 @@ mod tests {
 
     #[test]
     fn insert_string_one_level() {
-        let mut node: Node<()> = Node::new_leaf(String::from("Hello"));
+        let mut node: Node<()> = Node::new_leaf(String::from("Hello"), None);
         node.insert_str(3, "TEST");
 
         assert_eq!(node.text(), "HelTESTlo");
@@ -276,15 +386,15 @@ mod tests {
     #[test]
     #[should_panic]
     fn insert_string_panic() {
-        let mut node: Node<()> = Node::new_leaf(String::from("Hello"));
+        let mut node: Node<()> = Node::new_leaf(String::from("Hello"), None);
         node.insert_str(233, "wefewf");
     }
 
     #[test]
     fn insert_string_multiple_levels() {
-        let mut root: Node<()> = Node::new(());
-        root.add_child(Node::new_leaf(String::from("Hello ")));
-        root.add_child(Node::new_leaf(String::from("World")));
+        let mut root: Node<()> = Node::new();
+        root.add_child(Node::new_leaf(String::from("Hello "), None));
+        root.add_child(Node::new_leaf(String::from("World"), None));
 
         root.insert_str(3, "XXXX");
         root.insert_str(12, "ZZZZ");
@@ -294,14 +404,14 @@ mod tests {
 
     #[test]
     fn push_string() {
-        let mut root: Node<()> = Node::new(());
+        let mut root: Node<()> = Node::new();
 
-        let child1: Node<()> = Node::new_leaf(String::from("Hello "));
+        let child1: Node<()> = Node::new_leaf(String::from("Hello "), None);
         root.add_child(child1);
 
-        let mut child2: Node<()> = Node::new(());
-        let subchild1: Node<()> = Node::new_leaf(String::from("Wor"));
-        let subchild2: Node<()> = Node::new_leaf(String::from("ld"));
+        let mut child2: Node<()> = Node::new();
+        let subchild1: Node<()> = Node::new_leaf(String::from("Wor"), None);
+        let subchild2: Node<()> = Node::new_leaf(String::from("ld"), None);
         child2.add_child(subchild1);
         child2.add_child(subchild2);
         root.add_child(child2);
@@ -313,19 +423,19 @@ mod tests {
 
     #[test]
     fn push_char() {
-        let mut root: Node<()> = Node::new(());
+        let mut root: Node<()> = Node::new();
 
-        let mut child1: Node<()> = Node::new(());
-        let subchild1: Node<()> = Node::new_leaf(String::from("Hel"));
-        let subchild2: Node<()> = Node::new_leaf(String::from("lo "));
+        let mut child1: Node<()> = Node::new();
+        let subchild1: Node<()> = Node::new_leaf(String::from("Hel"), None);
+        let subchild2: Node<()> = Node::new_leaf(String::from("lo "), None);
         child1.add_child(subchild1);
         child1.add_child(subchild2);
         root.add_child(child1);
 
-        let mut child2: Node<()> = Node::new(());
-        let subchild1: Node<()> = Node::new_leaf(String::from("Wor"));
-        let subchild2: Node<()> = Node::new_leaf(String::from("ld"));
-        let subchild3: Node<()> = Node::new_leaf(String::from("!"));
+        let mut child2: Node<()> = Node::new();
+        let subchild1: Node<()> = Node::new_leaf(String::from("Wor"), None);
+        let subchild2: Node<()> = Node::new_leaf(String::from("ld"), None);
+        let subchild3: Node<()> = Node::new_leaf(String::from("!"), None);
         child2.add_child(subchild1);
         child2.add_child(subchild2);
         child2.add_child(subchild3);

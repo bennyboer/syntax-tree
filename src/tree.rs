@@ -1,5 +1,6 @@
 use std::fmt;
 use crate::{Node, iterator};
+use std::rc::Rc;
 
 pub struct Tree<T> {
     /// The trees root node.
@@ -9,8 +10,11 @@ pub struct Tree<T> {
 impl<T> Tree<T> {
     /// Create new tree.
     pub fn new(string: &str) -> Tree<T> {
+        let mut root_node = Node::new();
+        root_node.add_child(Node::new_leaf(String::from(string), None));
+
         Tree {
-            root: Node::new_leaf(String::from(string)),
+            root: root_node,
         }
     }
 
@@ -23,7 +27,7 @@ impl<T> Tree<T> {
     /// Set syntax/format info for the passed range.
     /// The range is the passed start index (inclusive) to the passed end index (exclusive).
     pub fn set(&mut self, start_idx: usize, end_idx: usize, obj: T) {
-        self.root.set(start_idx, end_idx, obj);
+        self.root.set(start_idx, end_idx, Rc::new(obj));
     }
 
     /// Insert a char in the underlying text.
@@ -69,20 +73,6 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn format_test_leaf_split_invalid_input_1() {
-        let mut tree: Tree<()> = Tree::new("Hallo Welt");
-        tree.set(0, "Hallo Welt".len() + 1, ());
-    }
-
-    #[test]
-    #[should_panic]
-    fn format_test_leaf_split_invalid_input_2() {
-        let mut tree: Tree<()> = Tree::new("Hallo Welt");
-        tree.set("Hallo Welt".len() + 1, "Hallo Welt".len() + 6, ());
-    }
-
-    #[test]
-    #[should_panic]
     fn format_test_leaf_split_invalid_input_3() {
         let mut tree: Tree<()> = Tree::new("Hallo Welt");
         tree.set(2, 1, ());
@@ -94,7 +84,7 @@ mod tests {
         tree.set(0, "Hallo Welt".len(), ());
 
         assert_eq!(format!("{:#?}", tree), "|---o ('Hallo Welt')
-    |-- 'Hallo Welt'
+    |-- 'Hallo Welt' #
 ");
     }
 
@@ -104,8 +94,7 @@ mod tests {
         tree.set(0, 5, ());
 
         assert_eq!(format!("{:#?}", tree), "|---o ('Hallo Welt')
-    |---o ('Hallo')
-        |-- 'Hallo'
+    |-- 'Hallo' #
     |-- ' Welt'
 ");
     }
@@ -117,8 +106,7 @@ mod tests {
 
         assert_eq!(format!("{:#?}", tree), "|---o ('Hallo Welt')
     |-- 'Hallo '
-    |---o ('Welt')
-        |-- 'Welt'
+    |-- 'Welt' #
 ");
     }
 
@@ -129,9 +117,58 @@ mod tests {
 
         assert_eq!(format!("{:#?}", tree), "|---o ('Hallo Welt')
     |-- 'Ha'
-    |---o ('llo W')
-        |-- 'llo W'
+    |-- 'llo W' #
     |-- 'elt'
+");
+    }
+
+    #[test]
+    fn format_test_complex_1() {
+        let mut tree: Tree<()> = Tree::new("Hallo Welt");
+        tree.set(6, "Hallo Welt".len(), ());
+        tree.set(4, 7, ());
+
+        assert_eq!(format!("{:#?}", tree), "|---o ('Hallo Welt')
+    |-- 'Hall'
+    |-- 'o ' #
+    |---o ('Welt') #
+        |-- 'W' #
+        |-- 'elt'
+");
+    }
+
+    #[test]
+    fn format_test_complex_2() {
+        let mut tree: Tree<()> = Tree::new("Hallo Welt");
+        tree.set(6, "Hallo Welt".len(), ());
+        tree.set(0, "Hallo Welt".len(), ());
+        tree.set(4, 7, ());
+
+        assert_eq!(format!("{:#?}", tree), "|---o ('Hallo Welt')
+    |---o ('Hallo Welt') #
+        |-- 'Hall'
+        |-- 'o ' #
+        |---o ('Welt') #
+            |-- 'W' #
+            |-- 'elt'
+");
+    }
+
+    #[test]
+    fn insert_str_test_complex() {
+        let mut tree: Tree<()> = Tree::new("Hallo Welt");
+        tree.set(6, "Hallo Welt".len(), ());
+        tree.set(0, "Hallo Welt".len(), ());
+        tree.set(4, 7, ());
+        tree.insert_str(6, "du ");
+
+        assert_eq!(format!("{:#?}", tree), "|---o ('Hallo du Welt')
+    |---o ('Hallo du Welt') #
+        |-- 'Hall'
+        |-- 'o du ' #
+        |---o ('Welt') #
+            |-- 'W' #
+            |-- 'elt'
 ");
     }
 }
