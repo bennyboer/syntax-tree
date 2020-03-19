@@ -74,6 +74,63 @@ impl<T> Node<T> {
         self.obj.as_ref()
     }
 
+    /// Set syntax/format info for the passed range.
+    /// The range is the passed start index (inclusive) to the passed end index (exclusive).
+    pub fn set(&mut self, start_idx: usize, end_idx: usize, obj: T) {
+        assert!(start_idx < end_idx);
+
+        if self.is_leaf() {
+            self.set_leaf(start_idx, end_idx, obj);
+        } else {}
+    }
+
+    /// Set for a leaf node.
+    fn set_leaf(&mut self, start_idx: usize, end_idx: usize, obj: T) {
+        let text = self.text.take().unwrap();
+        let length = text.len();
+
+        assert!(start_idx <= length);
+        assert!(end_idx <= length);
+
+        if start_idx == 0 && end_idx == length {
+            // Affects exactly this one leaf -> Turn into a node
+            self.obj = Some(obj);
+            self.add_child(Node::new_leaf(text));
+        } else if start_idx == 0 {
+            // Turn into node with two children
+            let left_str = String::from(&text[0..end_idx]);
+            let right_str = String::from(&text[end_idx..length]);
+
+            let mut obj_node = Node::new(obj);
+            obj_node.add_child(Node::new_leaf(left_str));
+
+            self.add_child(obj_node);
+            self.add_child(Node::new_leaf(right_str));
+        } else if end_idx == length {
+            // Turn into node with two children
+            let left_str = String::from(&text[0..start_idx]);
+            let right_str = String::from(&text[start_idx..length]);
+
+            let mut obj_node = Node::new(obj);
+            obj_node.add_child(Node::new_leaf(right_str));
+
+            self.add_child(Node::new_leaf(left_str));
+            self.add_child(obj_node);
+        } else {
+            // Turn into node with three children
+            let left_str = String::from(&text[0..start_idx]);
+            let middle_str = String::from(&text[start_idx..end_idx]);
+            let right_str = String::from(&text[end_idx..length]);
+
+            let mut obj_node = Node::new(obj);
+            obj_node.add_child(Node::new_leaf(middle_str));
+
+            self.add_child(Node::new_leaf(left_str));
+            self.add_child(obj_node);
+            self.add_child(Node::new_leaf(right_str));
+        }
+    }
+
     /// Insert a char in the underlying text.
     pub fn insert(&mut self, idx: usize, ch: char) {
         if self.is_leaf() {
