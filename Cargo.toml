@@ -1,9 +1,11 @@
 [package]
 name = "syntax-tree"
 version = "0.1.0"
-authors = ["Benjamin Eder <benjamin.eder@unit4.com>"]
+authors = ["Benjamin Eder <barny.eder@gmail.com>"]
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license = "MIT"
+description = "Tree structure managing syntax/format information for text"
+readme = "README.md"
+repository = "https://github.com/bennyboer/syntax-tree"
 
 [dependencies]
