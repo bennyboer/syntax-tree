@@ -122,7 +122,18 @@ impl<T> Node<T>
     }
 
     /// Set for a node with children.
-    fn set_on_node(&mut self, mut start_idx: usize, end_idx: usize, info: Rc<T>) {
+    fn set_on_node(&mut self, start_idx: usize, end_idx: usize, info: Rc<T>) {
+        // Check if affects only this node
+        let length = self.length();
+        if start_idx == 0 && end_idx == length {
+            self.add_info(info);
+        } else {
+            self.set_on_node_children(start_idx, end_idx, info);
+        }
+    }
+
+    /// Set on nodes children.
+    fn set_on_node_children(&mut self, mut start_idx: usize, end_idx: usize, info: Rc<T>) {
         // Find out which child-node(s) is/are affected
         let mut offset = 0;
         let mut affected_children = Vec::new();
@@ -350,14 +361,18 @@ impl<T> Node<T>
 }
 
 impl<T> fmt::Debug for Node<T>
-    where T: Eq + Hash + Debug {
+    where T: Ord + Hash + Debug {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for iterator::Item { node, level } in self.pre_order_iter() {
-            if node.is_leaf() {
-                writeln!(f, "{spacing}|-- '{text}'{format}", spacing = " ".repeat(level * 4), text = node.text(), format = format!(" {:?}", node.infos))?;
-            } else {
-                writeln!(f, "{spacing}|---o ('{text}'){format}", spacing = " ".repeat(level * 4), text = node.text(), format = format!(" {:?}", node.infos))?;
-            }
+            let mut sorted_infos: Vec<&Rc<T>> = node.infos().collect();
+            sorted_infos.sort();
+
+            writeln!(
+                f,
+                "{spacing}|-- '{text}'{format}",
+                spacing = " ".repeat(level * 4),
+                text = node.text(),
+                format = format!(" {:?}", sorted_infos))?;
         }
 
         Ok(())

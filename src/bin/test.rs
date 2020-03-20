@@ -14,12 +14,16 @@ fn main() {
     // println!("{:#?}", tree);
     // tree.set(0, "Hello World".len(), Fmt::Italic);
     // println!("{:#?}", tree);
+    // tree.set(0, "Hello World".len(), Fmt::Bold);
+    // println!("{:#?}", tree);
     // tree.set(4, 7, Fmt::Underline);
     // println!("{:#?}", tree);
     // tree.insert_str(6, "cold ");
 
-    let mut tree: Tree<()> = Tree::new("Hallo Welt");
-    tree.set(0, "Hallo Welt".len(), ());
+    let mut tree: Tree<i32> = Tree::new("Hello World");
+    tree.set(6, "Hello World".len(), 3);
+    tree.set(0, "Hello World".len(), 42);
+    tree.set(0, "Hello World".len(), 8);
 
     println!("{:#?}", tree);
 }
