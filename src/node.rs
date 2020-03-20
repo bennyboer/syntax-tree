@@ -1,20 +1,23 @@
 use std::fmt;
 use crate::iterator;
 use std::rc::Rc;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::collections::hash_set::Iter;
 use std::hash::Hash;
 use std::fmt::Debug;
 
 pub struct Node<T> {
     /// Children of the node.
-    children: Vec<Node<T>>,
+    children: Option<Vec<Node<T>>>,
 
     /// Set to be filled with syntax/format information.
     infos: HashSet<Rc<T>>,
 
     /// Text the node (when a leaf) is holding.
     text: Option<String>,
+
+    /// Whether this node is the root node.
+    root: bool,
 }
 
 struct AffectedNode {
@@ -36,29 +39,48 @@ impl<T> Node<T>
     /// Create new leaf node.
     pub fn new_leaf(text: String) -> Node<T> {
         Node {
-            children: Vec::new(),
+            children: None,
             infos: HashSet::new(),
             text: Some(text),
+            root: false,
         }
     }
 
     /// Create new node.
     pub fn new() -> Node<T> {
         Node {
-            children: Vec::new(),
+            children: None,
             infos: HashSet::new(),
             text: None,
+            root: false,
+        }
+    }
+
+    /// Create new root node.
+    pub fn new_root(string: &str) -> Node<T> {
+        Node {
+            children: None,
+            infos: HashSet::new(),
+            text: Some(String::from(string)),
+            root: true,
         }
     }
 
     /// Check whether this node is a
     pub fn is_leaf(&self) -> bool {
-        self.children.is_empty()
+        match self.children.as_ref() {
+            Some(v) => v.is_empty(),
+            None => true
+        }
     }
 
     /// Add a child to this node.
     pub fn add_child(&mut self, child: Node<T>) {
-        self.children.push(child);
+        if self.children.is_none() {
+            self.children = Some(Vec::new());
+        }
+
+        self.children.as_mut().unwrap().push(child);
     }
 
     /// Get text the node (or children) is/are holding.
@@ -67,7 +89,7 @@ impl<T> Node<T>
             self.text.as_ref().unwrap().to_string()
         } else {
             let mut result = String::with_capacity(self.length());
-            for child in &self.children {
+            for child in self.children.as_ref().unwrap() {
                 result.push_str(&child.text());
             }
             result
@@ -80,7 +102,7 @@ impl<T> Node<T>
             self.text.as_ref().unwrap().len()
         } else {
             let mut result = 0;
-            for child in &self.children {
+            for child in self.children.as_ref().unwrap() {
                 result += child.length();
             }
             result
@@ -98,8 +120,112 @@ impl<T> Node<T>
     }
 
     /// Remove info from the node.
-    pub fn remove_info(&mut self, info: &T) {
+    /// Specify recurse whether the info should be removed from children as well.
+    /// Since a node can end up useless without info, it might have to be replaced
+    /// by its children which are then returned by this method.
+    pub fn remove_info(&mut self, info: &T, recurse: bool) -> Option<Vec<Node<T>>> {
         self.infos.remove(info);
+
+        if recurse && !self.is_leaf() {
+            let children = self.children.as_mut().unwrap();
+            let mut replace_later: Vec<(usize, Vec<Node<T>>)> = Vec::new();
+            for i in 0..children.len() {
+                let child = &mut children[i];
+                if let Some(v) = child.remove_info(info, recurse) {
+                    replace_later.push((i, v));
+                }
+            }
+
+            // Find and process single-item replace later nodes which consist of one
+            // unformatted leaf. If they are adjacent, they can be merged.
+            // Handle the others as usual by replacing the old child with its children.
+            let mut replace_later_single_unformatted_leafs = Vec::new();
+            let mut removed = 0;
+            for (idx, mut nodes) in replace_later.into_iter() {
+                children.remove(idx - removed);
+                removed += 1;
+
+                if nodes.len() == 1 && nodes.first().unwrap().is_leaf() && nodes.first().unwrap().infos.len() == 0 {
+                    // Is only one unformatted leaf
+                    replace_later_single_unformatted_leafs.push((idx, nodes.remove(0)));
+                } else {
+                    // Replace the old node by its children.
+                    let mut i = 0;
+                    for node in nodes {
+                        children.insert(idx + i, node);
+                        i += 1;
+                    }
+                }
+            }
+
+            if !replace_later_single_unformatted_leafs.is_empty() {
+                // Collect and merge adjacent unformatted leafs.
+                let (mut start_idx, first_node) = replace_later_single_unformatted_leafs.remove(0);
+                let mut last_idx = start_idx;
+                let mut collector = vec!((last_idx, first_node));
+
+                let mut to_merge = Vec::new();
+                let mut to_insert = Vec::new();
+                for (idx, node) in replace_later_single_unformatted_leafs {
+                    if idx == last_idx + 1 {
+                        collector.push((idx, node));
+                    } else {
+                        if collector.len() > 1 {
+                            to_merge.push((start_idx, collector));
+                        } else {
+                            to_insert.push(collector.remove(0));
+                        }
+                        start_idx = last_idx;
+                        collector = vec!((idx, node));
+                    }
+
+                    last_idx = idx;
+                }
+                if collector.len() >= 2 {
+                    to_merge.push((start_idx, collector));
+                } else {
+                    to_insert.push(collector.remove(0));
+                }
+
+                // Merge adjacent unformatted leafs.
+                for (idx, nodes) in to_merge {
+                    let mut string = String::new();
+                    for (_, n) in nodes {
+                        string.push_str(n.text.as_ref().unwrap());
+                    }
+
+                    children.insert(idx, Node::new_leaf(string));
+                }
+
+                // Insert remaining
+                for (idx, node) in to_insert {
+                    children.insert(idx, node);
+                }
+            }
+
+            // Check if we have only one leaf child without info left
+            if children.len() == 1 && children.first().unwrap().is_leaf() {
+                // Turn this node into a leaf
+                let n = children.remove(0);
+                self.children = None;
+
+                self.text = Some(n.text.unwrap());
+                for info in n.infos.into_iter() {
+                    self.add_info(info);
+                }
+            }
+        }
+
+        if self.infos.len() == 0 && !self.root {
+            if self.is_leaf() {
+                Some(vec!(Node::new_leaf(self.text.take().unwrap())))
+            } else {
+                // This node has no use -> replace with it's children
+                Some(self.children.take().unwrap())
+            }
+        } else {
+            None
+        }
     }
 
     /// Check if the node has the passed info.
@@ -126,6 +252,8 @@ impl<T> Node<T>
         // Check if affects only this node
         let length = self.length();
         if start_idx == 0 && end_idx == length {
+            // Remove info in children -> now unnecessary
+            self.remove_info(&info, true);
             self.add_info(info);
         } else {
             self.set_on_node_children(start_idx, end_idx, info);
@@ -137,8 +265,8 @@ impl<T> Node<T>
         // Find out which child-node(s) is/are affected
         let mut offset = 0;
         let mut affected_children = Vec::new();
-        for i in 0..self.children.len() {
-            let child = &self.children[i];
+        for i in 0..self.child_count() {
+            let child = &self.children.as_ref().unwrap()[i];
 
             let length = child.length();
 
@@ -164,7 +292,6 @@ impl<T> Node<T>
         }
 
         // Collect all completely enclosed child nodes.
-        let mut replace_later = HashMap::new();
         let completely_enclosed: Vec<&AffectedNode> = affected_children.iter().filter(|a| a.completely_enclosed).collect();
         if completely_enclosed.len() >= 2 {
             // Build new parent node for these nodes
@@ -174,34 +301,35 @@ impl<T> Node<T>
             // Remove all completely enclosed children from old parent and assign to the new one
             let mut removed_count = 0;
             for a in &completely_enclosed {
-                parent.add_child(self.children.remove(a.node_index - removed_count));
+                parent.add_child(self.children.as_mut().unwrap().remove(a.node_index - removed_count));
                 removed_count += 1;
             }
 
             // Insert new parent as child of the old parent
-            self.children.insert(completely_enclosed.first().as_ref().unwrap().node_index, parent);
+            self.children.as_mut().unwrap().insert(completely_enclosed.first().as_ref().unwrap().node_index, parent);
 
             // Reduce to the rest of the affected children, which have not been handled yet.
             affected_children = affected_children.into_iter().filter(|a| !a.completely_enclosed).collect();
         }
 
         // Set the object to the affected children.
+        let mut replace_later = Vec::new();
         for i in 0..affected_children.len() {
             let affected = &affected_children[i];
 
-            let child = &mut self.children[affected.node_index];
+            let child = &mut self.children.as_mut().unwrap()[affected.node_index];
             if let Some(replace_with) = child.set(affected.start, affected.end, Rc::clone(&info)) {
-                replace_later.insert(i, replace_with); // Replace the child node with the passed nodes later.
+                replace_later.push((i, replace_with)); // Replace the child node with the passed nodes later.
             }
         }
 
         // Replace the child nodes which need to
         for (idx, replace_with) in replace_later {
-            self.children.remove(idx);
+            self.children.as_mut().unwrap().remove(idx);
 
             let mut i = 0;
             for node in replace_with {
-                self.children.insert(idx + i, node);
+                self.children.as_mut().unwrap().insert(idx + i, node);
                 i += 1;
             }
         }
@@ -230,7 +358,7 @@ impl<T> Node<T>
 
             let right_node = Node::new_leaf(String::from(&text[end_idx..length]));
 
-            if has_infos {
+            if has_infos || self.root {
                 self.add_child(left_node);
                 self.add_child(right_node);
                 None
@@ -244,7 +372,7 @@ impl<T> Node<T>
             let mut right_node = Node::new_leaf(String::from(&text[start_idx..length]));
             right_node.add_info(info);
 
-            if has_infos {
+            if has_infos || self.root {
                 self.add_child(left_node);
                 self.add_child(right_node);
                 None
@@ -260,7 +388,7 @@ impl<T> Node<T>
 
             let right_node = Node::new_leaf(String::from(&text[end_idx..length]));
 
-            if has_infos {
+            if has_infos || self.root {
                 self.add_child(left_node);
                 self.add_child(middle_node);
                 self.add_child(right_node);
@@ -283,7 +411,7 @@ impl<T> Node<T>
             self.text.as_mut().unwrap().insert(idx, ch);
         } else {
             let mut offset = 0;
-            for child in &mut self.children {
+            for child in self.children.as_mut().unwrap() {
                 let length = child.length();
 
                 if idx <= offset + length {
@@ -308,7 +436,7 @@ impl<T> Node<T>
             self.text.as_mut().unwrap().insert_str(idx, string);
         } else {
             let mut offset = 0;
-            for child in &mut self.children {
+            for child in self.children.as_mut().unwrap() {
                 let length = child.length();
 
                 if idx <= offset + length {
@@ -326,7 +454,7 @@ impl<T> Node<T>
         if self.is_leaf() {
             self.text.as_mut().unwrap().push(ch);
         } else {
-            self.children.last_mut().unwrap().push(ch);
+            self.children.as_mut().unwrap().last_mut().unwrap().push(ch);
         }
     }
 
@@ -335,18 +463,21 @@ impl<T> Node<T>
         if self.is_leaf() {
             self.text.as_mut().unwrap().push_str(string);
         } else {
-            self.children.last_mut().unwrap().push_str(string);
+            self.children.as_mut().unwrap().last_mut().unwrap().push_str(string);
         }
     }
 
     /// Get the count of children under this node.
     pub fn child_count(&self) -> usize {
-        self.children.len()
+        match self.children.as_ref() {
+            Some(v) => v.len(),
+            None => 0,
+        }
     }
 
     /// Get a slice of all children under this node.
     pub fn children(&self) -> &[Node<T>] {
-        &self.children[..]
+        &self.children.as_ref().unwrap()[..]
     }
 
     /// Get a depth first pre order iterator.

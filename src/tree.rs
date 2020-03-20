@@ -13,11 +13,8 @@ impl<T> Tree<T>
     where T: Eq + Hash {
     /// Create new tree.
     pub fn new(string: &str) -> Tree<T> {
-        let mut root_node = Node::new();
-        root_node.add_child(Node::new_leaf(String::from(string)));
-
         Tree {
-            root: root_node,
+            root: Node::new_root(string),
         }
     }
 
@@ -74,102 +71,118 @@ impl<T> fmt::Debug for Tree<T>
 #[cfg(test)]
 mod tests {
     use crate::Tree;
+    use std::cmp::Ordering;
+
+    #[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Eq, Hash)]
+    pub enum Fmt {
+        Bold = 1,
+        Italic = 2,
+        Underline = 3,
+    }
+
+    impl Ord for Fmt {
+        fn cmp(&self, other: &Self) -> Ordering {
+            let a = *self as u8;
+            let b = *other as u8;
+
+            a.cmp(&b)
+        }
+    }
 
     #[test]
     #[should_panic]
     fn format_test_leaf_split_invalid_input_3() {
-        let mut tree: Tree<()> = Tree::new("Hallo Welt");
-        tree.set(2, 1, ());
+        let mut tree = Tree::new("Hallo Welt");
+        tree.set(2, 1, Fmt::Bold);
     }
 
     #[test]
     fn format_test_leaf_split_case_1() {
-        let mut tree: Tree<()> = Tree::new("Hallo Welt");
-        tree.set(0, "Hallo Welt".len(), ());
+        let mut tree = Tree::new("Hallo Welt");
+        tree.set(0, "Hallo Welt".len(), Fmt::Bold);
 
-        assert_eq!(format!("{:#?}", tree), "|-- 'Hallo Welt' [()]
-    |-- 'Hallo Welt' []
+        assert_eq!(format!("{:#?}", tree), "|-- 'Hallo Welt' [Bold]
 ");
     }
 
     #[test]
     fn format_test_leaf_split_case_2() {
-        let mut tree: Tree<()> = Tree::new("Hallo Welt");
-        tree.set(0, 5, ());
+        let mut tree = Tree::new("Hallo Welt");
+        tree.set(0, 5, Fmt::Bold);
 
         assert_eq!(format!("{:#?}", tree), "|-- 'Hallo Welt' []
-    |-- 'Hallo' [()]
+    |-- 'Hallo' [Bold]
     |-- ' Welt' []
 ");
     }
 
     #[test]
     fn format_test_leaf_split_case_3() {
-        let mut tree: Tree<()> = Tree::new("Hallo Welt");
-        tree.set(6, "Hallo Welt".len(), ());
+        let mut tree = Tree::new("Hallo Welt");
+        tree.set(6, "Hallo Welt".len(), Fmt::Bold);
 
         assert_eq!(format!("{:#?}", tree), "|-- 'Hallo Welt' []
     |-- 'Hallo ' []
-    |-- 'Welt' [()]
+    |-- 'Welt' [Bold]
 ");
     }
 
     #[test]
     fn format_test_leaf_split_case_4() {
-        let mut tree: Tree<()> = Tree::new("Hallo Welt");
-        tree.set(2, 7, ());
+        let mut tree = Tree::new("Hallo Welt");
+        tree.set(2, 7, Fmt::Bold);
 
         assert_eq!(format!("{:#?}", tree), "|-- 'Hallo Welt' []
     |-- 'Ha' []
-    |-- 'llo W' [()]
+    |-- 'llo W' [Bold]
     |-- 'elt' []
 ");
     }
 
     #[test]
     fn format_test_complex_1() {
-        let mut tree: Tree<()> = Tree::new("Hallo Welt");
-        tree.set(6, "Hallo Welt".len(), ());
-        tree.set(4, 7, ());
+        let mut tree = Tree::new("Hallo Welt");
+        tree.set(6, "Hallo Welt".len(), Fmt::Bold);
+        tree.set(4, 7, Fmt::Underline);
 
         assert_eq!(format!("{:#?}", tree), "|-- 'Hallo Welt' []
     |-- 'Hall' []
-    |-- 'o ' [()]
-    |-- 'Welt' [()]
-        |-- 'W' [()]
+    |-- 'o ' [Underline]
+    |-- 'Welt' [Bold]
+        |-- 'W' [Underline]
         |-- 'elt' []
 ");
     }
 
     #[test]
     fn format_test_complex_2() {
-        let mut tree: Tree<()> = Tree::new("Hallo Welt");
-        tree.set(6, "Hallo Welt".len(), ());
-        tree.set(0, "Hallo Welt".len(), ());
-        tree.set(4, 7, ());
+        let mut tree = Tree::new("Hallo Welt");
+        tree.set(6, "Hallo Welt".len(), Fmt::Bold);
+        tree.set(0, "Hallo Welt".len(), Fmt::Italic);
+        tree.set(4, 7, Fmt::Underline);
 
-        assert_eq!(format!("{:#?}", tree), "|-- 'Hallo Welt' [()]
+        assert_eq!(format!("{:#?}", tree), "|-- 'Hallo Welt' [Italic]
     |-- 'Hall' []
-    |-- 'o ' [()]
-    |-- 'Welt' [()]
-        |-- 'W' [()]
+    |-- 'o ' [Underline]
+    |-- 'Welt' [Bold]
+        |-- 'W' [Underline]
         |-- 'elt' []
 ");
     }
 
     #[test]
     fn insert_str_test_complex() {
-        let mut tree: Tree<()> = Tree::new("Hallo Welt");
-        tree.set(6, "Hallo Welt".len(), ());
-        tree.set(0, "Hallo Welt".len(), ());
-        tree.set(4, 7, ());
+        let mut tree = Tree::new("Hallo Welt");
+        tree.set(6, "Hallo Welt".len(), Fmt::Bold);
+        tree.set(0, "Hallo Welt".len(), Fmt::Italic);
+        tree.set(4, 7, Fmt::Underline);
         tree.insert_str(6, "du ");
 
-        assert_eq!(format!("{:#?}", tree), "|-- 'Hallo du Welt' [()]
+        assert_eq!(format!("{:#?}", tree), "|-- 'Hallo du Welt' [Italic]
     |-- 'Hall' []
-    |-- 'o du ' [()]
-    |-- 'Welt' [()]
-        |-- 'W' [()]
+    |-- 'o du ' [Underline]
+    |-- 'Welt' [Bold]
+        |-- 'W' [Underline]
         |-- 'elt' []
 ");
     }
@@ -184,6 +197,44 @@ mod tests {
         assert_eq!(format!("{:#?}", tree), "|-- 'Hello World' [8, 42]
     |-- 'Hello ' []
     |-- 'World' [3]
+")
+    }
+
+    #[test]
+    fn format_test_cleanup_1() {
+        let mut tree = Tree::new("Hello World");
+        tree.set(6, "Hello World".len(), Fmt::Bold);
+        tree.set(0, "Hello World".len(), Fmt::Italic);
+        tree.set(0, "Hello World".len(), Fmt::Bold);
+
+        assert_eq!(format!("{:#?}", tree), "|-- 'Hello World' [Bold, Italic]
+")
+    }
+
+    #[test]
+    fn format_test_cleanup_2() {
+        let mut tree = Tree::new("Hello World");
+        tree.set(6, "Hello World".len(), Fmt::Bold);
+        tree.set(0, 6, Fmt::Underline);
+        tree.set(0, "Hello World".len(), Fmt::Italic);
+        tree.set(0, "Hello World".len(), Fmt::Bold);
+
+        assert_eq!(format!("{:#?}", tree), "|-- 'Hello World' [Bold, Italic]
+    |-- 'Hello ' [Underline]
+    |-- 'World' []
+")
+    }
+
+    #[test]
+    fn format_test_cleanup_3() {
+        let mut tree = Tree::new("Hello World");
+        tree.set(6, "Hello World".len(), Fmt::Bold);
+        tree.set(0, 6, Fmt::Underline);
+        tree.set(0, "Hello World".len(), Fmt::Italic);
+        tree.set(0, "Hello World".len(), Fmt::Bold);
+        tree.set(0, "Hello World".len(), Fmt::Underline);
+
+        assert_eq!(format!("{:#?}", tree), "|-- 'Hello World' [Bold, Italic, Underline]
 ")
     }
 }
