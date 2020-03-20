@@ -1,17 +1,20 @@
 use std::fmt;
 use crate::{Node, iterator};
 use std::rc::Rc;
+use std::hash::Hash;
+use std::fmt::Debug;
 
 pub struct Tree<T> {
     /// The trees root node.
     root: Node<T>,
 }
 
-impl<T> Tree<T> {
+impl<T> Tree<T>
+    where T: Eq + Hash {
     /// Create new tree.
     pub fn new(string: &str) -> Tree<T> {
         let mut root_node = Node::new();
-        root_node.add_child(Node::new_leaf(String::from(string), None));
+        root_node.add_child(Node::new_leaf(String::from(string)));
 
         Tree {
             root: root_node,
@@ -61,7 +64,8 @@ impl<T> Tree<T> {
     }
 }
 
-impl<T> fmt::Debug for Tree<T> {
+impl<T> fmt::Debug for Tree<T>
+    where T: Eq + Hash + Debug {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self.root)
     }
@@ -83,8 +87,8 @@ mod tests {
         let mut tree: Tree<()> = Tree::new("Hallo Welt");
         tree.set(0, "Hallo Welt".len(), ());
 
-        assert_eq!(format!("{:#?}", tree), "|---o ('Hallo Welt')
-    |-- 'Hallo Welt' #
+        assert_eq!(format!("{:#?}", tree), "|---o ('Hallo Welt') {}
+    |-- 'Hallo Welt' {()}
 ");
     }
 
@@ -93,9 +97,9 @@ mod tests {
         let mut tree: Tree<()> = Tree::new("Hallo Welt");
         tree.set(0, 5, ());
 
-        assert_eq!(format!("{:#?}", tree), "|---o ('Hallo Welt')
-    |-- 'Hallo' #
-    |-- ' Welt'
+        assert_eq!(format!("{:#?}", tree), "|---o ('Hallo Welt') {}
+    |-- 'Hallo' {()}
+    |-- ' Welt' {}
 ");
     }
 
@@ -104,9 +108,9 @@ mod tests {
         let mut tree: Tree<()> = Tree::new("Hallo Welt");
         tree.set(6, "Hallo Welt".len(), ());
 
-        assert_eq!(format!("{:#?}", tree), "|---o ('Hallo Welt')
-    |-- 'Hallo '
-    |-- 'Welt' #
+        assert_eq!(format!("{:#?}", tree), "|---o ('Hallo Welt') {}
+    |-- 'Hallo ' {}
+    |-- 'Welt' {()}
 ");
     }
 
@@ -115,10 +119,10 @@ mod tests {
         let mut tree: Tree<()> = Tree::new("Hallo Welt");
         tree.set(2, 7, ());
 
-        assert_eq!(format!("{:#?}", tree), "|---o ('Hallo Welt')
-    |-- 'Ha'
-    |-- 'llo W' #
-    |-- 'elt'
+        assert_eq!(format!("{:#?}", tree), "|---o ('Hallo Welt') {}
+    |-- 'Ha' {}
+    |-- 'llo W' {()}
+    |-- 'elt' {}
 ");
     }
 
@@ -128,12 +132,12 @@ mod tests {
         tree.set(6, "Hallo Welt".len(), ());
         tree.set(4, 7, ());
 
-        assert_eq!(format!("{:#?}", tree), "|---o ('Hallo Welt')
-    |-- 'Hall'
-    |-- 'o ' #
-    |---o ('Welt') #
-        |-- 'W' #
-        |-- 'elt'
+        assert_eq!(format!("{:#?}", tree), "|---o ('Hallo Welt') {}
+    |-- 'Hall' {}
+    |-- 'o ' {()}
+    |---o ('Welt') {()}
+        |-- 'W' {()}
+        |-- 'elt' {}
 ");
     }
 
@@ -144,13 +148,13 @@ mod tests {
         tree.set(0, "Hallo Welt".len(), ());
         tree.set(4, 7, ());
 
-        assert_eq!(format!("{:#?}", tree), "|---o ('Hallo Welt')
-    |---o ('Hallo Welt') #
-        |-- 'Hall'
-        |-- 'o ' #
-        |---o ('Welt') #
-            |-- 'W' #
-            |-- 'elt'
+        assert_eq!(format!("{:#?}", tree), "|---o ('Hallo Welt') {}
+    |---o ('Hallo Welt') {()}
+        |-- 'Hall' {}
+        |-- 'o ' {()}
+        |---o ('Welt') {()}
+            |-- 'W' {()}
+            |-- 'elt' {}
 ");
     }
 
@@ -162,13 +166,13 @@ mod tests {
         tree.set(4, 7, ());
         tree.insert_str(6, "du ");
 
-        assert_eq!(format!("{:#?}", tree), "|---o ('Hallo du Welt')
-    |---o ('Hallo du Welt') #
-        |-- 'Hall'
-        |-- 'o du ' #
-        |---o ('Welt') #
-            |-- 'W' #
-            |-- 'elt'
+        assert_eq!(format!("{:#?}", tree), "|---o ('Hallo du Welt') {}
+    |---o ('Hallo du Welt') {()}
+        |-- 'Hall' {}
+        |-- 'o du ' {()}
+        |---o ('Welt') {()}
+            |-- 'W' {()}
+            |-- 'elt' {}
 ");
     }
 }

@@ -1,12 +1,14 @@
 use crate::Node;
 use crate::iterator;
+use std::hash::Hash;
 
 /// Depth-first iterator in pre-order.
 pub struct PreOrder<'a, T> {
     stack: Vec<iterator::Item<'a, T>>,
 }
 
-impl<'a, T> PreOrder<'a, T> {
+impl<'a, T> PreOrder<'a, T>
+    where T: Eq + Hash {
     pub fn new(root: &'a Node<T>) -> Self {
         PreOrder {
             stack: vec!(iterator::Item {
@@ -17,7 +19,8 @@ impl<'a, T> PreOrder<'a, T> {
     }
 }
 
-impl<'a, T> Iterator for PreOrder<'a, T> {
+impl<'a, T> Iterator for PreOrder<'a, T>
+    where T: Eq + Hash {
     type Item = iterator::Item<'a, T>;
 
     fn next(&mut self) -> Option<Self::Item> {
