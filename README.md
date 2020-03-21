@@ -93,3 +93,7 @@ The output should be:
 # Could be rendered to HTML like this:
 <p>H<em>ell</em><strong><em>W</em>orld</strong></p>
 ```
+
+The above example HTML rendering would look like this when rendered in a browser:
+
+<p>H<em>ell</em><strong><em>W</em>orld</strong></p>
