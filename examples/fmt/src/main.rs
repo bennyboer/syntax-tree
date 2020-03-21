@@ -18,25 +18,12 @@ impl Ord for Fmt {
 }
 
 fn main() {
-    // let mut tree = Tree::new("Hello World");
-    // println!("{:#?}", tree);
-    // tree.set(4, 7, Fmt::Underline);
-    // println!("{:#?}", tree);
-    // tree.set(0, 4, Fmt::Underline);
-    // println!("{:#?}", tree);
-
     let mut tree = Tree::new("Hello World");
     println!("{:#?}", tree);
-    tree.set(0, 1, Fmt::Bold);
+    tree.set(4, 7, Fmt::Underline);
     println!("{:#?}", tree);
-    tree.set(0, 1, Fmt::Italic);
+    tree.set(4, "Hello World".len(), Fmt::Bold);
     println!("{:#?}", tree);
-    tree.set(0, 1, Fmt::Underline);
-    println!("{:#?}", tree);
-    tree.set(1, 2, Fmt::Bold);
-    println!("{:#?}", tree);
-    tree.set(1, 2, Fmt::Italic);
-    println!("{:#?}", tree);
-    tree.set(2, 3, Fmt::Bold);
+    tree.set(0, 4, Fmt::Underline);
     println!("{:#?}", tree);
 }
