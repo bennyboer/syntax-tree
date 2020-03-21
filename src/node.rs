@@ -248,6 +248,10 @@ impl<T> Node<T>
     pub fn set(&mut self, start_idx: usize, end_idx: usize, info: Rc<T>) -> Option<Vec<Node<T>>> {
         assert!(start_idx < end_idx);
 
+        if self.has_info(&info) {
+            return None;
+        }
+
         if self.is_leaf() {
             self.set_on_leaf(start_idx, end_idx, info)
         } else {
@@ -394,17 +398,32 @@ impl<T> Node<T>
             let insert_idx = indices[0];
 
             let mut removed = 0;
+            let mut to_add = Vec::new();
             for idx in indices {
                 let mut child = self.children.as_mut().unwrap().remove(idx - removed);
                 match child.remove_info(0, child.length(), &info, false) {
                     Some(v) => {
                         for n in v {
-                            parent.add_child(n);
+                            to_add.push(n);
                         }
                     }
-                    None => parent.add_child(child),
+                    None => to_add.push(child),
                 }
                 removed += 1;
+            }
+
+            if to_add.iter().all(|n| n.infos.len() == 0) {
+                // Merge all children
+                let mut string = String::new();
+                for mut n in to_add {
+                    string.push_str(&n.text.take().unwrap());
+                }
+                parent.text = Some(string);
+            } else {
+                for n in to_add {
+                    parent.add_child(n);
+                }
+                parent.regroup_neighbors();
             }
 
             parent.add_info(info);
@@ -589,6 +608,81 @@ impl<T> Node<T>
             Some(v) => v.len(),
             None => 0,
         }
+    }
+
+    /// Remove a count of characters from the underlying text starting at idx.
+    /// Removing a character might lead to having an empty leaf left.
+    /// Method will return boolean tuple with two elements (bool, bool).
+    /// The first boolean will determine whether the node is unnecessary now,
+    /// the second boolean determined whether parent may need to regroup its children.
+    pub fn remove(&mut self, mut idx: usize, mut count: usize) -> (bool, bool) {
+        let length = self.length();
+
+        if self.is_leaf() {
+            assert!(idx + count <= length);
+
+            self.text.as_mut().unwrap().replace_range(idx..idx + count, "");
+        } else {
+            let children = self.children.as_mut().unwrap();
+
+            // Remove from affected children
+            let mut offset = 0;
+            let mut remove_later = Vec::new();
+            let mut may_need_regroup = false;
+            for i in 0..children.len() {
+                let child = &mut children[i];
+                let length = child.length();
+
+                if idx >= offset && idx < offset + length {
+                    // Affects child
+                    let max_end = offset + length;
+                    let end = if idx + count < max_end { idx + count } else { max_end };
+
+                    let remove_count = end - idx;
+                    let (unnecessary, needs_regroup) = child.remove(idx - offset, remove_count);
+                    if unnecessary {
+                        remove_later.push(i);
+                    }
+                    may_need_regroup = may_need_regroup || needs_regroup;
+
+                    if idx + count <= max_end {
+                        break; // Next child is not affected
+                    }
+
+                    idx += remove_count;
+                    count -= remove_count;
+                }
+
+                offset += length;
+            }
+
+            // Remove now unnecessary children
+            let mut removed = 0;
+            for i in remove_later {
+                children.remove(i - removed);
+                removed += 1;
+            }
+
+            // Check if having only one child left
+            if children.len() == 1 {
+                let mut child = children.remove(0);
+                self.children = None;
+
+                self.text = Some(child.text.take().unwrap());
+                for info in child.infos {
+                    self.add_info(info);
+                }
+
+                return (self.length() == 0, true);
+            } else if children.is_empty() {
+                self.children = None;
+                self.text = Some(String::from(""));
+            } else if may_need_regroup {
+                self.regroup_neighbors();
+            }
+        }
+
+        (self.length() == 0, false)
     }
 
     /// Get a slice of all children under this node.

@@ -3,47 +3,93 @@
 ... is a tree structure managing syntax/format information for text.
 It can be used to build the backing model for a WYSIWYG editor or to do syntax highlighting.
 
-
-## Concepts
-
-- **Only** leafs hold text
-- Without syntax/format information the tree consists of only a leaf with all the text
-- Every node may contain syntax/format information for **all** underlying nodes
-    - Child nodes are not higher prioritized than parent nodes, thus cannot overwrite syntax/format information
-- Both nodes and leafs are able to hold syntax/format information
-- Only **one** piece of format/syntax information can be held by any node/leaf
-- Leafs **must** hold at least one char
-
-
 ## Example
 
+The below example code and console output is taken from the example app under `example/fmt/main.rs`.
+
 ```rust
-let mut tree: Tree<()> = Tree::new("Hello World");
-tree.set(6, "Hello World".len(), ());
-tree.set(0, "Hello World".len(), ());
-tree.set(4, 7, ());
-tree.insert_str(6, "cold ");
+println!("# Create new tree with text 'Hello World'");
+let mut tree: Tree<Fmt> = Tree::new("Hello World");
 println!("{:#?}", tree);
+
+println!("# Format 'o W' underlined");
+tree.set(4, 7, Fmt::Underline);
+println!("{:#?}", tree);
+
+println!("# Format 'World' bold");
+tree.set(6, "Hello World".len(), Fmt::Bold);
+println!("{:#?}", tree);
+
+println!("# Format 'Wor' underlined");
+tree.set(6, 9, Fmt::Underline);
+println!("{:#?}", tree);
+
+println!("# Remove 'o '");
+tree.remove(4, 2);
+println!("{:#?}", tree);
+
+println!("# Remove format underlined from every node in range 'HellW'");
+tree.unset(0, 6, &Fmt::Underline);
+println!("{:#?}", tree);
+
+println!("# Format 'ellW' italic");
+tree.set(1, 5, Fmt::Italic);
+println!("{:#?}", tree);
+
+println!("# Could be rendered to HTML like this:");
+println!("{}", to_html(&tree));
 ```
 
 The output should be:
 
 ```
-|---o ('Hello cold World')
-    |---o ('Hello cold World') #
-        |-- 'Hell'
-        |-- 'o cold ' #
-        |---o ('World') #
-            |-- 'W' #
-            |-- 'orld'
+# Create new tree with text 'Hello World'
+|-- 'Hello World' []
+
+# Format 'o W' underlined
+|-- 'Hello World' []
+    |-- 'Hell' []
+    |-- 'o W' [Underline]
+    |-- 'orld' []
+
+# Format 'World' bold
+|-- 'Hello World' []
+    |-- 'Hell' []
+    |-- 'o W' [Underline]
+        |-- 'o ' []
+        |-- 'W' [Bold]
+    |-- 'orld' [Bold]
+
+# Format 'Wor' underlined
+|-- 'Hello World' []
+    |-- 'Hell' []
+    |-- 'o W' [Underline]
+        |-- 'o ' []
+        |-- 'W' [Bold]
+    |-- 'orld' [Bold]
+        |-- 'or' [Underline]
+        |-- 'ld' []
+
+# Remove 'o '
+|-- 'HellWorld' []
+    |-- 'Hell' []
+    |-- 'World' [Bold]
+        |-- 'Wor' [Underline]
+        |-- 'ld' []
+
+# Remove format underlined from every node in range 'HellW'
+|-- 'HellWorld' []
+    |-- 'Hell' []
+    |-- 'World' [Bold]
+
+# Format 'ellW' italic
+|-- 'HellWorld' []
+    |-- 'H' []
+    |-- 'ell' [Italic]
+    |-- 'World' [Bold]
+        |-- 'W' [Italic]
+        |-- 'orld' []
+
+# Could be rendered to HTML like this:
+<p>H<em>ell</em><strong><em>W</em>orld</strong></p>
 ```
-
-The `o` say it is a node with children, the `#` that there is format/syntax information attached to the node/leaf.
-
-For example we could have passed text-format information instead of the `()` in the above code:
-
-- `tree.set(6, "Hello World".len(), ...);` - Format `World` fat
-- `tree.set(0, "Hello World".len(), ...);` - Format `Hello World` in italics
-- `tree.set(4, 7, ...);` - Format `o W` yellow
-
-After the syntax tree processed the formatting, you can just use the `pre_order_iter` method on the tree to create for example HTML with the formatting information on the nodes in order to create for example formatted HTML text.
