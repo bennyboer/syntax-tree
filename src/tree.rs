@@ -26,8 +26,14 @@ impl<T> Tree<T>
 
     /// Set syntax/format info for the passed range.
     /// The range is the passed start index (inclusive) to the passed end index (exclusive).
-    pub fn set(&mut self, start_idx: usize, end_idx: usize, obj: T) {
-        self.root.set(start_idx, end_idx, Rc::new(obj));
+    pub fn set(&mut self, start_idx: usize, end_idx: usize, info: T) {
+        self.root.set(start_idx, end_idx, Rc::new(info));
+    }
+
+    /// Unset the passed syntax/format info for the passed range.
+    /// The range is the passed start index (inclusive) to the passed end index (exclusive).
+    pub fn unset(&mut self, start_idx: usize, end_idx: usize, info: &T) {
+        self.root.unset(start_idx, end_idx, info);
     }
 
     /// Insert a char in the underlying text.
@@ -235,6 +241,51 @@ mod tests {
         tree.set(0, "Hello World".len(), Fmt::Underline);
 
         assert_eq!(format!("{:#?}", tree), "|-- 'Hello World' [Bold, Italic, Underline]
+")
+    }
+
+    #[test]
+    fn unset_test_1() {
+        let mut tree = Tree::new("Hello World");
+        tree.set(4, 7, Fmt::Underline);
+        tree.unset(6, 7, &Fmt::Underline);
+
+        assert_eq!(format!("{:#?}", tree), "|-- 'Hello World' []
+")
+    }
+
+    #[test]
+    fn group_neighbor_test_1() {
+        let mut tree = Tree::new("Hello World");
+        tree.set(4, 7, Fmt::Underline);
+        tree.set(4, 7, Fmt::Bold);
+        tree.set(0, 4, Fmt::Underline);
+
+        assert_eq!(format!("{:#?}", tree), "|-- 'Hello World' []
+    |-- 'Hello W' [Underline]
+        |-- 'Hell' []
+        |-- 'o W' [Bold]
+    |-- 'orld' []
+")
+    }
+
+    #[test]
+    fn group_neighbor_test_2() {
+        let mut tree = Tree::new("Hello World");
+        tree.set(0, 1, Fmt::Bold);
+        tree.set(0, 1, Fmt::Italic);
+        tree.set(0, 1, Fmt::Underline);
+        tree.set(1, 2, Fmt::Bold);
+        tree.set(1, 2, Fmt::Italic);
+        tree.set(2, 3, Fmt::Bold);
+
+        assert_eq!(format!("{:#?}", tree), "|-- 'Hello World' []
+    |-- 'Hel' [Bold]
+        |-- 'He' [Italic]
+            |-- 'H' [Underline]
+            |-- 'e' []
+        |-- 'l' []
+    |-- 'lo World' []
 ")
     }
 }

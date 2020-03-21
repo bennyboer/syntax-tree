@@ -123,17 +123,26 @@ impl<T> Node<T>
     /// Specify recurse whether the info should be removed from children as well.
     /// Since a node can end up useless without info, it might have to be replaced
     /// by its children which are then returned by this method.
-    pub fn remove_info(&mut self, info: &T, recurse: bool) -> Option<Vec<Node<T>>> {
+    pub fn remove_info(&mut self, start_idx: usize, end_idx: usize, info: &T, recurse: bool) -> Option<Vec<Node<T>>> {
         self.infos.remove(info);
 
         if recurse && !self.is_leaf() {
             let children = self.children.as_mut().unwrap();
-            let mut replace_later: Vec<(usize, Vec<Node<T>>)> = Vec::new();
+
+            let mut offset = 0;
+            let mut replace_later = Vec::new();
             for i in 0..children.len() {
                 let child = &mut children[i];
-                if let Some(v) = child.remove_info(info, recurse) {
-                    replace_later.push((i, v));
+                let length = child.length();
+                let ranges_intersect = offset < end_idx && start_idx < offset + length;
+
+                if ranges_intersect || (child.is_leaf() && child.infos.len() == 0) {
+                    if let Some(v) = child.remove_info(start_idx, end_idx, info, recurse) {
+                        replace_later.push((i, v));
+                    }
                 }
+
+                offset += length;
             }
 
             // Find and process single-item replace later nodes which consist of one
@@ -247,13 +256,25 @@ impl<T> Node<T>
         }
     }
 
+    /// Unset the passed syntax/format info for the passed range.
+    /// The range is the passed start index (inclusive) to the passed end index (exclusive).
+    pub fn unset(&mut self, start_idx: usize, end_idx: usize, info: &T) {
+        assert!(start_idx < end_idx);
+
+        if let Some(v) = self.remove_info(start_idx, end_idx, info, true) {
+            self.children = Some(v);
+        }
+    }
+
     /// Set for a node with children.
     fn set_on_node(&mut self, start_idx: usize, end_idx: usize, info: Rc<T>) {
         // Check if affects only this node
         let length = self.length();
         if start_idx == 0 && end_idx == length {
             // Remove info in children -> now unnecessary
-            self.remove_info(&info, true);
+            if let Some(v) = self.remove_info(0, length, &info, true) {
+                self.children = Some(v);
+            }
             self.add_info(info);
         } else {
             self.set_on_node_children(start_idx, end_idx, info);
@@ -262,15 +283,18 @@ impl<T> Node<T>
 
     /// Set on nodes children.
     fn set_on_node_children(&mut self, mut start_idx: usize, end_idx: usize, info: Rc<T>) {
+        let children = self.children.as_mut().unwrap();
+        let child_count = children.len();
+
         // Find out which child-node(s) is/are affected
         let mut offset = 0;
         let mut affected_children = Vec::new();
-        for i in 0..self.child_count() {
-            let child = &self.children.as_ref().unwrap()[i];
+        for i in 0..child_count {
+            let child = &children[i];
 
             let length = child.length();
 
-            if start_idx >= offset && start_idx <= offset + length {
+            if start_idx >= offset && start_idx < offset + length {
                 let end = if end_idx <= offset + length { end_idx - offset } else { length };
 
                 let completely_enclosed = start_idx == offset && end == length;
@@ -301,15 +325,24 @@ impl<T> Node<T>
             // Remove all completely enclosed children from old parent and assign to the new one
             let mut removed_count = 0;
             for a in &completely_enclosed {
-                parent.add_child(self.children.as_mut().unwrap().remove(a.node_index - removed_count));
+                parent.add_child(children.remove(a.node_index - removed_count));
                 removed_count += 1;
             }
 
             // Insert new parent as child of the old parent
-            self.children.as_mut().unwrap().insert(completely_enclosed.first().as_ref().unwrap().node_index, parent);
+            let insert_idx = completely_enclosed.first().as_ref().unwrap().node_index;
+            children.insert(insert_idx, parent);
 
             // Reduce to the rest of the affected children, which have not been handled yet.
-            affected_children = affected_children.into_iter().filter(|a| !a.completely_enclosed).collect();
+            affected_children = affected_children.into_iter()
+                .filter(|a| !a.completely_enclosed)
+                .map(|mut a| {
+                    if a.node_index > insert_idx {
+                        a.node_index -= removed_count;
+                    }
+
+                    a
+                }).collect();
         }
 
         // Set the object to the affected children.
@@ -317,22 +350,105 @@ impl<T> Node<T>
         for i in 0..affected_children.len() {
             let affected = &affected_children[i];
 
-            let child = &mut self.children.as_mut().unwrap()[affected.node_index];
+            let child = &mut children[affected.node_index];
             if let Some(replace_with) = child.set(affected.start, affected.end, Rc::clone(&info)) {
-                replace_later.push((i, replace_with)); // Replace the child node with the passed nodes later.
+                replace_later.push((affected.node_index, replace_with)); // Replace the child node with the passed nodes later.
             }
         }
 
         // Replace the child nodes which need to
+        let mut added = 0;
         for (idx, replace_with) in replace_later {
-            self.children.as_mut().unwrap().remove(idx);
+            children.remove(idx);
 
-            let mut i = 0;
             for node in replace_with {
-                self.children.as_mut().unwrap().insert(idx + i, node);
-                i += 1;
+                children.insert(idx + added, node);
+                added += 1;
             }
         }
+
+        self.regroup_neighbors();
+    }
+
+    /// Check if the passed node has the same formats than this node.
+    fn has_same_infos(&self, other_node: &Node<T>) -> bool {
+        if self.infos.len() != other_node.infos.len() {
+            return false;
+        }
+
+        for info in &other_node.infos {
+            if !self.has_info(info) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// Regroup neighboring nodes with similar syntax/format info.
+    fn regroup_neighbors(&mut self) {
+        if let Some((info, indices)) = self.find_max_similar_neighbors() {
+            // Create new parent node for the similar nodes
+            let mut parent = Node::new();
+
+            let insert_idx = indices[0];
+
+            let mut removed = 0;
+            for idx in indices {
+                let mut child = self.children.as_mut().unwrap().remove(idx - removed);
+                match child.remove_info(0, child.length(), &info, false) {
+                    Some(v) => {
+                        for n in v {
+                            parent.add_child(n);
+                        }
+                    }
+                    None => parent.add_child(child),
+                }
+                removed += 1;
+            }
+
+            parent.add_info(info);
+
+            self.children.as_mut().unwrap().insert(insert_idx, parent);
+
+            // Check if we have only one child left with the same syntax/format info as this node
+            if self.child_count() == 1 {
+                if self.has_same_infos(&self.children.as_ref().unwrap()[0]) {
+                    // Merge node with child
+                    let mut child = self.children.as_mut().unwrap().remove(0);
+                    self.children = Some(child.children.take().unwrap());
+                }
+            }
+        }
+    }
+
+    /// Find the maximum similar neighbors in the nodes children.
+    fn find_max_similar_neighbors<'a>(&self) -> Option<(Rc<T>, Vec<usize>)> {
+        let children = self.children.as_ref().unwrap();
+        let length = children.len();
+
+        let mut max_result: Option<(Rc<T>, Vec<usize>)> = None;
+        for i in 0..length {
+            let child = &children[i];
+
+            for info in &child.infos {
+                let mut similar = vec!(i);
+                for o in i + 1..length {
+                    let other_child = &children[o];
+                    if other_child.has_info(info) {
+                        similar.push(o);
+                    } else {
+                        break;
+                    }
+                }
+
+                if similar.len() > 1 && (max_result.is_none() || max_result.as_ref().unwrap().1.len() < similar.len()) {
+                    max_result = Some((Rc::clone(info), similar));
+                }
+            }
+        }
+
+        max_result
     }
 
     /// Set for a leaf node.
