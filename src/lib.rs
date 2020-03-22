@@ -1,4 +1,6 @@
 pub mod iterator;
+pub mod change;
+
 mod tree;
 mod node;
 

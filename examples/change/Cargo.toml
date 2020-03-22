@@ -1,5 +1,5 @@
 [package]
-name = "fmt"
+name = "change"
 version = "0.1.0"
 authors = ["Benjamin Eder <barny.eder@gmail.com>"]
 edition = "2018"
