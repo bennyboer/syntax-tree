@@ -1,4 +1,4 @@
-# `syntax-tree`
+# `syntax-tree` [![Build Status](https://travis-ci.com/bennyboer/syntax-tree.svg?branch=master)](https://travis-ci.com/bennyboer/syntax-tree)
 
 ... is a tree structure managing syntax/format information for text.
 It can be used to build the backing model for a WYSIWYG editor or to do syntax highlighting.
