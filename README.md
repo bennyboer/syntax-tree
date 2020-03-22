@@ -9,7 +9,7 @@ The below example code and console output is taken from the example app under `e
 
 ```rust
 println!("# Create new tree with text 'Hello World'");
-let mut tree: Tree<Fmt> = Tree::new("Hello World");
+let mut tree: Tree<Fmt> = Tree::new("Hello World", None);
 println!("{:#?}", tree);
 
 println!("# Format 'o W' underlined");

@@ -3,23 +3,23 @@ use crate::{Node, iterator, change};
 use std::rc::Rc;
 use std::hash::Hash;
 use std::fmt::Debug;
-use crate::change::Listener;
 
 pub struct Tree<T> {
     /// The trees root node.
     root: Node<T>,
-
-    /// List of listeners listening for change events.
-    listeners: Option<Vec<change::Listener<T>>>,
 }
 
 impl<T> Tree<T>
     where T: Eq + Hash {
     /// Create new tree.
-    pub fn new(string: &str) -> Tree<T> {
+    pub fn new(string: &str, listener: Option<change::Listener<T>>) -> Tree<T> {
+        let mut root = Node::new_root(string);
+        if let Some(l) = listener {
+            root.give_listener(&Some(Rc::new(l)));
+        }
+
         Tree {
-            root: Node::new_root(string),
-            listeners: None,
+            root,
         }
     }
 
@@ -79,41 +79,16 @@ impl<T> Tree<T>
     /// Clear the underlying text.
     /// Specify whether you want the tree to keep the formats on the root node.
     pub fn clear(&mut self, keep_formats: bool) {
-        let mut new_root = Node::new_root("");
+        self.root.remove(0, self.length());
 
-        if keep_formats {
-            for info in self.root.infos() {
-                new_root.add_info(Rc::clone(info));
-            }
+        if !keep_formats {
+            self.root.clear_infos();
         }
-
-        self.root = new_root;
     }
 
     /// Get the root node.
     pub fn get_root(&self) -> &Node<T> {
         &self.root
-    }
-
-    /// Add a change event listener.
-    /// Returns the ID of the event listener (used to remove it later).
-    pub fn add_listener(&mut self, l: change::Listener<T>) -> usize {
-        match &mut self.listeners {
-            Some(v) => v.push(l),
-            None => self.listeners = Some(vec!(l)),
-        };
-
-        self.listeners.as_ref().unwrap().len() - 1
-    }
-
-    /// Remove a change event listener.
-    /// Returns the listener when it could be removed.
-    pub fn remove_listener(&mut self, listener_id: usize) -> Option<Listener<T>> {
-        if let Some(v) = &mut self.listeners {
-            Some(v.remove(listener_id))
-        } else {
-            None
-        }
     }
 
     /// Get a depth first pre order iterator.

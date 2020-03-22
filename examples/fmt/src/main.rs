@@ -4,7 +4,7 @@ use shared::render::html::to_html;
 
 fn main() {
     println!("# Create new tree with text 'Hello World'");
-    let mut tree: Tree<FontStyle> = Tree::new("Hello World");
+    let mut tree: Tree<FontStyle> = Tree::new("Hello World", None);
     println!("{:#?}", tree);
 
     println!("# Format 'o W' underlined");
