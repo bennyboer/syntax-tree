@@ -153,16 +153,6 @@ mod tests {
     }
 
     #[test]
-    fn unset_test_1() {
-        let mut tree = Tree::new("Hello World", None);
-        tree.set(4, 7, FontStyle::Underline);
-        tree.unset(6, 7, &FontStyle::Underline);
-
-        assert_eq!(format!("{:#?}", tree), "|-- 'Hello World' []
-");
-    }
-
-    #[test]
     fn group_neighbor_test_1() {
         let mut tree = Tree::new("Hello World", None);
         tree.set(4, 7, FontStyle::Underline);
@@ -408,4 +398,42 @@ mod tests {
 
         assert_eq!(root.text(), "Hello World!!");
     }
+
+    #[test]
+    fn unset_test_1() {
+        let mut tree = Tree::new("Hello World", None);
+        tree.set(4, 7, FontStyle::Underline);
+        tree.unset(6, 7, &FontStyle::Underline);
+
+        assert_eq!(format!("{:#?}", tree), "|-- 'Hello World' []
+");
+    }
+
+    #[test]
+    fn unset_test_2() {
+        let mut tree: Tree<FontStyle> = Tree::new("Hello World", None);
+        tree.set(4, 7, FontStyle::Underline);
+        tree.set(6, "Hello World".len(), FontStyle::Bold);
+        tree.unset(6, 7, &FontStyle::Underline);
+
+        assert_eq!(format!("{:#?}", tree), "|-- 'Hello World' []
+    |-- 'Hello ' []
+    |-- 'World' [Bold]
+");
+    }
+
+    #[test]
+    fn unset_test_3() {
+        let mut tree: Tree<FontStyle> = Tree::new("Hello World", None);
+        tree.set(4, 7, FontStyle::Underline);
+        tree.set(6, "Hello World".len(), FontStyle::Bold);
+        tree.unset(6, 7, &FontStyle::Bold);
+
+        assert_eq!(format!("{:#?}", tree), "|-- 'Hello World' []
+    |-- 'Hell' []
+    |-- 'o W' [Underline]
+    |-- 'orld' [Bold]
+");
+    }
+
 }

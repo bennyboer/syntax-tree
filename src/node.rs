@@ -158,6 +158,8 @@ impl<T> Node<T>
             self.emit_event(change::Event::InfosChanged { node: &self });
         }
 
+        println!("Remove info start: {}, end: {}", start_idx, end_idx);
+
         if recurse && !self.is_leaf() {
             let mut offset = 0;
             let mut replace_later = Vec::new();
@@ -166,10 +168,16 @@ impl<T> Node<T>
                 let length = child.length();
                 let ranges_intersect = offset < end_idx && start_idx < offset + length;
 
-                if ranges_intersect || (child.is_leaf() && child.infos.len() == 0) {
-                    if let Some(v) = child.remove_info(start_idx, end_idx, info, recurse) {
+                println!("Ranges intersect for {}? {} (start: {}, end: {}, offset: {}, length: {})", child.text(), ranges_intersect, start_idx, end_idx, offset, length);
+                if ranges_intersect {
+                    if let Some(v) = child.remove_info(if offset > start_idx { 0 } else { start_idx - offset }, end_idx - offset, info, recurse) {
                         replace_later.push((i, v));
                     }
+                } else if child.is_leaf() && child.infos.len() == 0 {
+                    let mut new_leaf = Node::new_leaf(child.text.take().unwrap());
+                    new_leaf.give_listener(&self.listener);
+
+                    replace_later.push((i, vec!(new_leaf)));
                 }
 
                 offset += length;
@@ -181,6 +189,9 @@ impl<T> Node<T>
             let mut replace_later_single_unformatted_leafs = Vec::new();
             let mut removed = 0;
             for (idx, mut nodes) in replace_later.into_iter() {
+                for n in &nodes {
+                    println!(" - to remove: {}", n.text());
+                }
                 &mut self.children.as_mut().unwrap().remove(idx - removed);
                 self.emit_event(change::Event::NodeRemoved { parent: &self, removed_idx: idx - removed });
                 removed += 1;
@@ -192,11 +203,20 @@ impl<T> Node<T>
                     // Replace the old node by its children.
                     let mut i = 0;
                     for node in nodes {
-                        &mut self.children.as_mut().unwrap().insert(idx + i, node);
-                        self.emit_event(change::Event::NodeAdded { parent: &self, added_idx: idx + 1 });
+                        let new_idx = idx + i - replace_later_single_unformatted_leafs.len();
+                        if node.is_leaf() && node.infos.len() == 0 {
+                            replace_later_single_unformatted_leafs.push((idx, node));
+                        } else {
+                            &mut self.children.as_mut().unwrap().insert(new_idx, node);
+                            self.emit_event(change::Event::NodeAdded { parent: &self, added_idx: new_idx });
+                        }
                         i += 1;
                     }
                 }
+            }
+
+            for n in &replace_later_single_unformatted_leafs {
+                println!(" CHILD ::::: {}", n.1.text());
             }
 
             if !replace_later_single_unformatted_leafs.is_empty() {
@@ -266,6 +286,10 @@ impl<T> Node<T>
                 if infos_added {
                     self.emit_event(change::Event::InfosChanged { node: &self });
                 }
+            }
+
+            if self.child_count() > 1 {
+                self.regroup_neighbors();
             }
         }
 
@@ -695,7 +719,9 @@ impl<T> Node<T>
             assert!(idx + count <= length);
 
             self.text.as_mut().unwrap().replace_range(idx..idx + count, "");
-            self.emit_event(change::Event::TextChanged { node: &self });
+            if self.length() > 0 {
+                self.emit_event(change::Event::TextChanged { node: &self });
+            }
         } else {
             // Remove from affected children
             let mut offset = 0;
