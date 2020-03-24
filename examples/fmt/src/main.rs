@@ -24,7 +24,7 @@ fn main() {
     println!("{:#?}", tree);
 
     println!("# Remove format underlined from every node in range 'HellW'");
-    tree.unset(0, 6, &FontStyle::Underline);
+    tree.unset(0, 5, FontStyle::Underline);
     println!("{:#?}", tree);
 
     println!("# Format 'ellW' italic");

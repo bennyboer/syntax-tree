@@ -4,6 +4,7 @@ use std::rc::Rc;
 use std::hash::Hash;
 use std::fmt::Debug;
 
+/// The syntax tree struct.
 pub struct Tree<T> {
     /// The trees root node.
     root: Node<T>,
@@ -23,12 +24,6 @@ impl<T> Tree<T>
         }
     }
 
-    /// Load a tree.
-    pub fn load() -> Tree<T> {
-        // TODO Implement loading a tree from syntax/format information and text
-        unimplemented!()
-    }
-
     /// Set syntax/format info for the passed range.
     /// The range is the passed start index (inclusive) to the passed end index (exclusive).
     pub fn set(&mut self, start_idx: usize, end_idx: usize, info: T) {
@@ -37,8 +32,8 @@ impl<T> Tree<T>
 
     /// Unset the passed syntax/format info for the passed range.
     /// The range is the passed start index (inclusive) to the passed end index (exclusive).
-    pub fn unset(&mut self, start_idx: usize, end_idx: usize, info: &T) {
-        self.root.unset(start_idx, end_idx, info);
+    pub fn unset(&mut self, start_idx: usize, end_idx: usize, info: T) {
+        self.root.unset(start_idx, end_idx, Rc::new(info));
     }
 
     /// Insert a char in the underlying text.

@@ -260,10 +260,9 @@ mod tests {
         tree.set(0, 4, FontStyle::Underline);
         tree.remove(7, "Hello World".len());
 
-        assert_eq!(format!("{:#?}", tree), "|-- 'Hello W' []
-    |-- 'Hello W' [Underline]
-        |-- 'Hell' []
-        |-- 'o W' [Bold]
+        assert_eq!(format!("{:#?}", tree), "|-- 'Hello W' [Underline]
+    |-- 'Hell' []
+    |-- 'o W' [Bold]
 ")
     }
 
@@ -403,9 +402,12 @@ mod tests {
     fn unset_test_1() {
         let mut tree = Tree::new("Hello World", None);
         tree.set(4, 7, FontStyle::Underline);
-        tree.unset(6, 7, &FontStyle::Underline);
+        tree.unset(6, 7, FontStyle::Underline);
 
         assert_eq!(format!("{:#?}", tree), "|-- 'Hello World' []
+    |-- 'Hell' []
+    |-- 'o ' [Underline]
+    |-- 'World' []
 ");
     }
 
@@ -414,10 +416,11 @@ mod tests {
         let mut tree: Tree<FontStyle> = Tree::new("Hello World", None);
         tree.set(4, 7, FontStyle::Underline);
         tree.set(6, "Hello World".len(), FontStyle::Bold);
-        tree.unset(6, 7, &FontStyle::Underline);
+        tree.unset(6, 7, FontStyle::Underline);
 
         assert_eq!(format!("{:#?}", tree), "|-- 'Hello World' []
-    |-- 'Hello ' []
+    |-- 'Hell' []
+    |-- 'o ' [Underline]
     |-- 'World' [Bold]
 ");
     }
@@ -427,7 +430,7 @@ mod tests {
         let mut tree: Tree<FontStyle> = Tree::new("Hello World", None);
         tree.set(4, 7, FontStyle::Underline);
         tree.set(6, "Hello World".len(), FontStyle::Bold);
-        tree.unset(6, 7, &FontStyle::Bold);
+        tree.unset(6, 7, FontStyle::Bold);
 
         assert_eq!(format!("{:#?}", tree), "|-- 'Hello World' []
     |-- 'Hell' []
@@ -436,4 +439,16 @@ mod tests {
 ");
     }
 
+    #[test]
+    fn unset_test_4() {
+        let mut tree: Tree<FontStyle> = Tree::new("Hello World", None);
+        tree.set(0, "Hello World".len(), FontStyle::Bold);
+        tree.unset(6, 7, FontStyle::Bold);
+
+        assert_eq!(format!("{:#?}", tree), "|-- 'Hello World' []
+    |-- 'Hello ' [Bold]
+    |-- 'W' []
+    |-- 'orld' [Bold]
+");
+    }
 }
